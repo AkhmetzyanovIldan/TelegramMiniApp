@@ -1,0 +1,206 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .connected { background: #d4edda; border: 1px solid #c3e6cb; }
+        .disconnected { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .messages { height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
+        .message { margin: 5px 0; padding: 5px; background: #f8f9fa; border-radius: 3px; }
+        input, button { padding: 8px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 WebSocket Test Client</h1>
+        
+        <div id="status" class="status disconnected">
+            🔴 Отключено
+        </div>
+        
+        <div>
+            <input type="text" id="userId" placeholder="User ID" value="test_user_123">
+            <input type="text" id="username" placeholder="Username" value="TestUser">
+            <input type="text" id="roomId" placeholder="Room ID" value="">
+            <button onclick="connect()">🔗 Подключиться</button>
+            <button onclick="disconnect()">🔴 Отключиться</button>
+        </div>
+        
+        <div>
+            <input type="text" id="message" placeholder="Сообщение" style="width: 300px;">
+            <button onclick="sendMessage()">📤 Отправить</button>
+            <button onclick="sendPing()">📡 Ping</button>
+        </div>
+        
+        <div>
+            <button onclick="joinRoom()">🎮 Присоединиться к комнате</button>
+            <button onclick="setReady(true)">✅ Готов</button>
+            <button onclick="setReady(false)">⏳ Не готов</button>
+        </div>
+        
+        <h3>📨 Сообщения:</h3>
+        <div id="messages" class="messages"></div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script>
+        let socket;
+        let currentRoom = '';
+        
+        function connect() {
+            const userId = document.getElementById('userId').value;
+            const username = document.getElementById('username').value;
+            
+            // Подключаемся к WebSocket серверу
+            socket = io('http://localhost:3000');
+            
+            socket.on('connect', () => {
+                updateStatus(true, `✅ Подключен: ${socket.id}`);
+                
+                // Аутентифицируемся
+                socket.emit('authenticate', {
+                    userId: userId,
+                    username: username
+                });
+            });
+            
+            socket.on('authenticated', (data) => {
+                addMessage(`🔑 Аутентифицирован как ${username} (${data.userId})`);
+            });
+            
+            socket.on('auth_error', (data) => {
+                addMessage(`❌ Ошибка аутентификации: ${data.message}`);
+            });
+            
+            socket.on('room_joined', (data) => {
+                currentRoom = data.room.id;
+                addMessage(`🎮 Присоединился к комнате ${data.room.id}`);
+                addMessage(`👥 Игроки: ${JSON.stringify(data.players.map(p => p.name))}`);
+            });
+            
+            socket.on('player_joined', (data) => {
+                addMessage(`👤 ${data.username} присоединился к комнате`);
+            });
+            
+            socket.on('player_ready_updated', (data) => {
+                addMessage(`✅ ${data.username} ${data.isReady ? 'готов' : 'не готов'} (${data.readyCount}/${data.totalPlayers})`);
+            });
+            
+            socket.on('chat_message', (data) => {
+                addMessage(`💬 ${data.username}: ${data.message}`);
+            });
+            
+            socket.on('game_action', (data) => {
+                addMessage(`🎮 Действие от ${data.from}: ${data.action} - ${JSON.stringify(data.data)}`);
+            });
+            
+            socket.on('pong', (data) => {
+                addMessage(`📡 Pong: ${new Date(data.timestamp).toLocaleTimeString()}`);
+            });
+            
+            socket.on('disconnect', () => {
+                updateStatus(false, '🔴 Отключен от сервера');
+            });
+            
+            socket.on('error', (error) => {
+                addMessage(`❌ Ошибка: ${error.message}`);
+            });
+        }
+        
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                updateStatus(false, '🔴 Отключено вручную');
+            }
+        }
+        
+        function joinRoom() {
+            const roomId = document.getElementById('roomId').value || 'TEST123';
+            const userId = document.getElementById('userId').value;
+            const username = document.getElementById('username').value;
+            
+            if (socket && socket.connected) {
+                socket.emit('join_room', {
+                    roomId: roomId,
+                    userId: userId,
+                    username: username
+                });
+            } else {
+                alert('Сначала подключитесь!');
+            }
+        }
+        
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            const userId = document.getElementById('userId').value;
+            const username = document.getElementById('username').value;
+            
+            if (!currentRoom) {
+                alert('Сначала присоединитесь к комнате!');
+                return;
+            }
+            
+            if (socket && socket.connected && message) {
+                socket.emit('chat_message', {
+                    roomId: currentRoom,
+                    userId: userId,
+                    username: username,
+                    message: message
+                });
+                document.getElementById('message').value = '';
+            }
+        }
+        
+        function setReady(isReady) {
+            const userId = document.getElementById('userId').value;
+            
+            if (!currentRoom) {
+                alert('Сначала присоединитесь к комнате!');
+                return;
+            }
+            
+            if (socket && socket.connected) {
+                socket.emit('player_ready', {
+                    roomId: currentRoom,
+                    userId: userId,
+                    isReady: isReady
+                });
+            }
+        }
+        
+        function sendPing() {
+            if (socket && socket.connected) {
+                socket.emit('ping');
+            }
+        }
+        
+        function updateStatus(connected, message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${connected ? 'connected' : 'disconnected'}`;
+        }
+        
+        function addMessage(text) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Автоподключение при загрузке
+        window.onload = () => {
+            // Автозаполняем roomId если есть в URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room');
+            if (roomId) {
+                document.getElementById('roomId').value = roomId;
+            }
+        };
+    </script>
+</body>
+</html>
