@@ -1,97 +1,48 @@
-﻿// Конфигурация API
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const API_URL = `${API_BASE_URL}/api`;
+﻿import axios from 'axios';
 
-interface CreateRoomRequest {
-  gameType: 'mafia' | 'spy';
-  maxPlayers?: number;
-  creatorId: string;
-  creatorName: string;
-}
+// ВАЖНО: Добавляем /api в URL
+const API_BASE_URL = 'http://localhost:3000/api';
 
-interface JoinRoomRequest {
-  userId: string;
-  userName: string;
-}
-
-interface Player {
-  id: string;
-  name: string;
-  isReady: boolean;
-  isHost: boolean;
-}
-
-interface Room {
-  id: string;
-  gameType: string;
-  maxPlayers: number;
-  players: Player[];
-  status: string;
-}
-
-export const createRoom = async (data: CreateRoomRequest): Promise<Room> => {
-  const response = await fetch(`${API_URL}/rooms`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-  }
-
-  return response.json();
-};
-
-export const joinRoom = async (roomId: string, data: JoinRoomRequest): Promise<Room> => {
-  const response = await fetch(`${API_URL}/rooms/${roomId}/join`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-  }
-
-  return response.json();
-};
-
-export const getRoom = async (roomId: string): Promise<Room> => {
-  const response = await fetch(`${API_URL}/rooms/${roomId}`);
+// Простая функция создания комнаты
+export const createRoom = async (data: any) => {
+  console.log('📤 Отправляю запрос на:', `${API_BASE_URL}/rooms`);
+  console.log('Данные:', data);
   
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+  try {
+    const response = await axios.post(`${API_BASE_URL}/rooms`, data);
+    console.log('✅ Ответ сервера:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ Ошибка запроса:', error.message);
+    if (error.response) {
+      console.error('Детали:', error.response.data);
+    }
+    throw error;
   }
-
-  return response.json();
 };
 
-export const listRooms = async (): Promise<Room[]> => {
-  const response = await fetch(`${API_URL}/rooms`);
+// Получение комнаты
+export const getRoom = async (roomId: string) => {
+  console.log('📥 Запрашиваю комнату:', `${API_BASE_URL}/rooms/${roomId}`);
   
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+  try {
+    const response = await axios.get(`${API_BASE_URL}/rooms/${roomId}`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`❌ Ошибка получения комнаты ${roomId}:`, error.message);
+    throw error;
   }
-
-  return response.json();
 };
 
-export const deleteRoom = async (roomId: string): Promise<void> => {
-  const response = await fetch(`${API_URL}/rooms/${roomId}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+export const joinRoom = async (roomId: string, userData: any) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/rooms/${roomId}/join`, {
+      userId: userData.id || 'user_' + Date.now(),
+      userName: userData.name || 'Player'
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error(`❌ Ошибка присоединения:`, error.message);
+    throw error;
   }
 };

@@ -1,4 +1,4 @@
-﻿const { GameRoom } = require('../models/GameModels');
+﻿const GameRoom = require('../../models/GameRoom');
 
 class RoomsController {
   async getAllRooms(req, res) {
@@ -6,71 +6,98 @@ class RoomsController {
       const rooms = await GameRoom.getAllActive();
       res.json({
         success: true,
-        count: rooms.length,
-        rooms: rooms
+        rooms
       });
     } catch (error) {
+      console.error('Ошибка при получении комнат:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: 'Внутренняя ошибка сервера'
       });
     }
   }
 
   async createRoom(req, res) {
     try {
-      const { gameType, creator, creatorId, creatorName, maxPlayers } = req.body;
+      const { gameType, maxPlayers = 10, creatorId, creatorName } = req.body;
       
-      console.log('Получены данные для создания комнаты:', req.body);
-
-      // Поддержка старого и нового формата
-      const creatorData = creator || {
-        id: creatorId || 'unknown',
-        name: creatorName || 'Игрок'
-      };
-
-      if (!gameType || !['mafia', 'spy'].includes(gameType)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Неверный тип игры. Допустимые значения: mafia, spy'
-        });
-      }
-
-      if (!creatorData.id) {
-        return res.status(400).json({
-          success: false,
-          error: 'creator.id или creatorId обязателен'
-        });
-      }
-
-      const roomData = {
+      console.log('Получены данные для создания комнаты:', {
         gameType,
-        creator: creatorData,
-        players: [{
-          id: creatorData.id,
-          name: creatorData.name,
-          isHost: true,
-          isReady: false
-        }],
+        maxPlayers,
+        creatorId,
+        creatorName
+      });
+
+      if (!gameType || !creatorId || !creatorName) {
+        return res.status(400).json({
+          success: false,
+          error: 'Не указаны обязательные поля: gameType, creatorId, creatorName'
+        });
+      }
+
+      const room = await GameRoom.create({
+        gameType,
+        creator: { id: creatorId, name: creatorName },
         settings: {
           maxPlayers: maxPlayers || (gameType === 'mafia' ? 10 : 8),
           minPlayers: gameType === 'mafia' ? 4 : 3
         }
-      };
+      });
 
-      console.log('Создаем комнату с данными:', roomData);
-      const room = await GameRoom.create(roomData);
+      console.log('Создаем комнату с данными:', {
+        gameType: room.gameType,
+        creator: room.players.find(p => p.isHost),
+        players: room.players,
+        settings: room.settings
+      });
 
       res.status(201).json({
         success: true,
-        room: room,
-        id: room.id
+        roomId: room.id,
+        roomCode: room.id,
+        message: 'Комната создана успешно'
       });
     } catch (error) {
       console.error('Ошибка при создании комнаты:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: error.message || 'Внутренняя ошибка сервера'
+      });
+    }
+  }
+
+  async getRoom(req, res) {
+    try {
+      const { id } = req.params;
+      
+      console.log(`Запрос комнаты: ${id}`);
+      
+      const room = await GameRoom.getById(id);
+      
+      if (!room) {
+        return res.status(404).json({
+          success: false,
+          error: 'Комната не найдена'
+        });
+      }
+
+      res.json({
+        success: true,
+        room: {
+          id: room.id,
+          gameType: room.gameType,
+          players: room.players,
+          settings: room.settings,
+          messages: room.messages || [],
+          createdAt: room.createdAt,
+          status: room.status || 'waiting'
+        }
+      });
+    } catch (error) {
+      console.error(`Ошибка при получении комнаты ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Внутренняя ошибка сервера'
       });
     }
   }
@@ -79,11 +106,11 @@ class RoomsController {
     try {
       const { id } = req.params;
       const { userId, userName } = req.body;
-      
-      if (!userId) {
+
+      if (!userId || !userName) {
         return res.status(400).json({
           success: false,
-          error: 'userId обязателен'
+          error: 'Не указаны userId и userName'
         });
       }
 
@@ -95,60 +122,34 @@ class RoomsController {
         });
       }
 
-      // Проверяем, не присоединился ли уже игрок
       const existingPlayer = room.players.find(p => p.id === userId);
       if (existingPlayer) {
-        return res.status(200).json({
+        return res.json({
           success: true,
-          message: 'Игрок уже в комнате',
-          room: room
+          roomId: room.id,
+          message: 'Вы уже в комнате'
         });
       }
 
-      // Добавляем игрока
-      await room.addPlayer({
+      room.players.push({
         id: userId,
-        name: userName || 'Игрок',
+        name: userName,
         isHost: false,
         isReady: false
       });
 
-      const updatedRoom = await GameRoom.getById(id);
-      
-      res.status(200).json({
+      await room.save();
+
+      res.json({
         success: true,
-        room: updatedRoom
+        roomId: room.id,
+        message: 'Вы присоединились к комнате'
       });
     } catch (error) {
       console.error('Ошибка при присоединении к комнате:', error);
       res.status(500).json({
         success: false,
-        error: error.message
-      });
-    }
-  }
-
-  async getRoom(req, res) {
-    try {
-      const { id } = req.params;
-      const room = await GameRoom.getById(id);
-      
-      if (!room) {
-        return res.status(404).json({
-          success: false,
-          error: 'Комната не найдена'
-        });
-      }
-      
-      res.status(200).json({
-        success: true,
-        room: room
-      });
-    } catch (error) {
-      console.error('Ошибка при получении комнаты:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message
+        error: error.message || 'Внутренняя ошибка сервера'
       });
     }
   }
@@ -156,9 +157,11 @@ class RoomsController {
   async deleteRoom(req, res) {
     try {
       const { id } = req.params;
-      await GameRoom.delete(id);
       
-      res.status(200).json({
+      const { redisClient } = require('../../config/redis');
+      await redisClient.del(`room:${id}`);
+      
+      res.json({
         success: true,
         message: 'Комната удалена'
       });
@@ -166,7 +169,7 @@ class RoomsController {
       console.error('Ошибка при удалении комнаты:', error);
       res.status(500).json({
         success: false,
-        error: error.message
+        error: error.message || 'Внутренняя ошибка сервера'
       });
     }
   }
