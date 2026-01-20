@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 
 interface TelegramUser {
   id: number;
@@ -30,50 +30,63 @@ export const useTelegram = () => {
   useEffect(() => {
     const initTelegram = () => {
       try {
+        console.log('Инициализация Telegram Web App...');
+        
         // Проверяем наличие Telegram Web App
         if (window.Telegram?.WebApp) {
           const { WebApp } = window.Telegram;
-          
+          console.log('Telegram WebApp найден:', WebApp);
+
           // Инициализируем приложение
           WebApp.expand();
           WebApp.ready();
+
+          const telegramUser = WebApp.initDataUnsafe?.user;
+          console.log('Данные пользователя от Telegram:', telegramUser);
           
-          if (WebApp.initDataUnsafe?.user) {
-            setUser(WebApp.initDataUnsafe.user);
+          if (telegramUser) {
+            console.log('ID пользователя:', telegramUser.id, 'Тип:', typeof telegramUser.id);
+            setUser(telegramUser);
           } else {
             // Режим разработки без Telegram
-            console.log('Telegram Web App не обнаружен, используем режим разработки');
-            setUser({
+            console.log('Telegram Web App не обнаружил пользователя, используем режим разработки');
+            const devUser = {
               id: Math.floor(Math.random() * 10000),
               first_name: 'Разработчик',
               username: 'dev_user'
-            });
+            };
+            console.log('Создан тестовый пользователь:', devUser);
+            setUser(devUser);
           }
         } else {
           // Режим разработки в браузере
           console.warn('Telegram Web App не доступен. Запущен режим разработки.');
-          setUser({
+          const devUser = {
             id: Math.floor(Math.random() * 10000),
             first_name: 'Тестовый',
             username: 'test_user'
-          });
+          };
+          console.log('Создан тестовый пользователь:', devUser);
+          setUser(devUser);
         }
-        
+
         setIsLoaded(true);
       } catch (error) {
         console.error('Ошибка инициализации Telegram:', error);
         // Fallback для разработки
-        setUser({
+        const fallbackUser = {
           id: Math.floor(Math.random() * 10000),
           first_name: 'Ошибка',
           username: 'error_user'
-        });
+        };
+        console.log('Создан пользователь при ошибке:', fallbackUser);
+        setUser(fallbackUser);
         setIsLoaded(true);
       }
     };
 
     initTelegram();
-    
+
     return () => {
       // Очистка при размонтировании
     };

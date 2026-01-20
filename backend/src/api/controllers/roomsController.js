@@ -102,10 +102,12 @@ class RoomsController {
     }
   }
 
-  async joinRoom(req, res) {
+    async joinRoom(req, res) {
     try {
       const { id } = req.params;
       const { userId, userName } = req.body;
+
+      console.log('Запрос присоединения:', { roomId: id, userId, userName });
 
       if (!userId || !userName) {
         return res.status(400).json({
@@ -122,28 +124,44 @@ class RoomsController {
         });
       }
 
+      // Проверяем, есть ли уже пользователь в комнате
       const existingPlayer = room.players.find(p => p.id === userId);
       if (existingPlayer) {
+        console.log('Пользователь уже в комнате:', { userId, userName });
         return res.json({
           success: true,
           roomId: room.id,
-          message: 'Вы уже в комнате'
+          message: 'Вы уже в комнате',
+          isAlreadyMember: true
         });
       }
 
+      // Проверяем максимальное количество игроков
+      if (room.players.length >= (room.settings?.maxPlayers || 10)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Комната заполнена'
+        });
+      }
+
+      // Добавляем нового игрока
       room.players.push({
         id: userId,
         name: userName,
         isHost: false,
-        isReady: false
+        isReady: false,
+        isAlive: true
       });
 
       await room.save();
 
+      console.log('Новый игрок добавлен:', { userId, userName, totalPlayers: room.players.length });
+
       res.json({
         success: true,
         roomId: room.id,
-        message: 'Вы присоединились к комнате'
+        message: 'Вы присоединились к комнате',
+        isAlreadyMember: false
       });
     } catch (error) {
       console.error('Ошибка при присоединении к комнате:', error);
@@ -176,3 +194,4 @@ class RoomsController {
 }
 
 module.exports = new RoomsController();
+

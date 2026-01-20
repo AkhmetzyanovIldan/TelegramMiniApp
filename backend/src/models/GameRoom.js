@@ -20,7 +20,7 @@ class GameRoom {
     static async create(data) {
         try {
             const room = new GameRoom(data);
-            
+
             if (data.creator) {
                 room.players.push({
                     id: data.creator.id,
@@ -31,7 +31,7 @@ class GameRoom {
                     isAlive: true
                 });
             }
-            
+
             await room.save();
             return room;
         } catch (error) {
@@ -44,7 +44,7 @@ class GameRoom {
         try {
             const roomData = await redisClient.get(`room:${roomId}`);
             if (!roomData) return null;
-            
+
             const parsedData = JSON.parse(roomData);
             return new GameRoom(parsedData);
         } catch (error) {
@@ -65,7 +65,7 @@ class GameRoom {
                 createdAt: this.createdAt,
                 status: this.status
             });
-            
+
             await redisClient.set(roomKey, serializedData);
             console.log(`✅ Комната ${this.id} сохранена в Redis`);
             return true;
@@ -95,11 +95,11 @@ class GameRoom {
                 text,
                 timestamp: new Date().toISOString()
             });
-            
+
             if (this.messages.length > 100) {
                 this.messages = this.messages.slice(-100);
             }
-            
+
             await this.save();
             return true;
         } catch (error) {
@@ -126,19 +126,52 @@ class GameRoom {
     async removePlayer(userId) {
         try {
             this.players = this.players.filter(p => p.id !== userId);
-            
+
             if (this.players.length === 0) {
                 await redisClient.del(`room:${this.id}`);
                 return 'deleted';
             }
-            
+
             const wasHost = this.players.find(p => p.id === userId)?.isHost;
             if (wasHost && this.players.length > 0) {
                 this.players[0].isHost = true;
             }
-            
+
             await this.save();
             return 'updated';
+        } catch (error) {
+            console.error(`❌ Ошибка удаления игрока ${userId}:`, error);
+            throw error;
+        }
+    }
+
+    async removeDisconnectedPlayer(userId) {
+        try {
+            const playerIndex = this.players.findIndex(p => p.id === userId);
+            if (playerIndex !== -1) {
+                const player = this.players[playerIndex];
+                
+                // Если игрок - хост, передаем хостство следующему игроку
+                if (player.isHost && this.players.length > 1) {
+                    const nextPlayerIndex = playerIndex === 0 ? 1 : 0;
+                    this.players[nextPlayerIndex].isHost = true;
+                }
+                
+                // Удаляем игрока
+                this.players.splice(playerIndex, 1);
+                
+                // Если комната пуста - удаляем ее
+                if (this.players.length === 0) {
+                    await redisClient.del(`room:${this.id}`);
+                    console.log(`Комната ${this.id} удалена (нет игроков)`);
+                    return 'deleted';
+                }
+                
+                await this.save();
+                console.log(`Игрок ${userId} удален из комнаты ${this.id}`);
+                return 'removed';
+            }
+            return 'not_found';
         } catch (error) {
             console.error(`❌ Ошибка удаления игрока ${userId}:`, error);
             throw error;

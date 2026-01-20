@@ -1,48 +1,98 @@
-﻿import axios from 'axios';
+﻿// API сервис для локальной разработки
+const API_BASE_URL = "http://localhost:3000";
 
-// ВАЖНО: Добавляем /api в URL
-const API_BASE_URL = 'http://localhost:3000/api';
+export interface Room {
+  id: string;
+  gameType: "mafia" | "spy";
+  players: Array<{
+    id: string;
+    name: string;
+    isReady: boolean;
+    role?: string;
+  }>;
+  creatorId: string;
+  status: "waiting" | "playing" | "finished";
+  code: string;
+}
 
-// Простая функция создания комнаты
-export const createRoom = async (data: any) => {
-  console.log('📤 Отправляю запрос на:', `${API_BASE_URL}/rooms`);
-  console.log('Данные:', data);
+export interface CreateRoomParams {
+  gameType: "mafia" | "spy";
+  creatorId: string;
+  creatorName: string;
+  maxPlayers?: number;
+}
+
+export interface CreateRoomResponse {
+  success: boolean;
+  roomId: string;
+  roomCode: string;
+  message: string;
+}
+
+export async function createRoom(params: CreateRoomParams): Promise<CreateRoomResponse> {
+  console.log('Отправка запроса на создание комнаты:', params);
   
-  try {
-    const response = await axios.post(`${API_BASE_URL}/rooms`, data);
-    console.log('✅ Ответ сервера:', response.data);
-    return response.data;
-  } catch (error: any) {
-    console.error('❌ Ошибка запроса:', error.message);
-    if (error.response) {
-      console.error('Детали:', error.response.data);
-    }
-    throw error;
-  }
-};
+  const response = await fetch(`${API_BASE_URL}/api/rooms`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      gameType: params.gameType,
+      creatorId: params.creatorId,
+      creatorName: params.creatorName,
+      maxPlayers: params.maxPlayers || (params.gameType === 'mafia' ? 10 : 8)
+    }),
+  });
 
-// Получение комнаты
-export const getRoom = async (roomId: string) => {
-  console.log('📥 Запрашиваю комнату:', `${API_BASE_URL}/rooms/${roomId}`);
+  console.log('Статус ответа:', response.status);
   
-  try {
-    const response = await axios.get(`${API_BASE_URL}/rooms/${roomId}`);
-    return response.data;
-  } catch (error: any) {
-    console.error(`❌ Ошибка получения комнаты ${roomId}:`, error.message);
-    throw error;
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Неизвестная ошибка' }));
+    console.error('Ошибка от сервера:', errorData);
+    throw new Error(errorData.error || "Ошибка создания комнаты");
   }
-};
 
-export const joinRoom = async (roomId: string, userData: any) => {
-  try {
-    const response = await axios.post(`${API_BASE_URL}/rooms/${roomId}/join`, {
-      userId: userData.id || 'user_' + Date.now(),
-      userName: userData.name || 'Player'
-    });
-    return response.data;
-  } catch (error: any) {
-    console.error(`❌ Ошибка присоединения:`, error.message);
-    throw error;
+  const result = await response.json();
+  console.log('Успешный ответ от сервера:', result);
+  return result;
+}
+
+export async function getRoom(roomId: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Ошибка получения комнаты");
   }
-};
+
+  const result = await response.json();
+  console.log('Данные комнаты:', result);
+  return result;
+}
+
+export async function joinRoom(roomId: string, playerId: string, playerName: string): Promise<any> {
+  console.log('Присоединение к комнате:', { roomId, playerId, playerName });
+  
+  const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ 
+      userId: playerId,  // Бэкенд ожидает userId, а не playerId
+      userName: playerName  // Бэкенд ожидает userName, а не playerName
+    }),
+  });
+
+  console.log('Статус ответа join:', response.status);
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Неизвестная ошибка' }));
+    console.error('Ошибка от сервера при присоединении:', errorData);
+    throw new Error(errorData.error || "Ошибка присоединения к комнате");
+  }
+
+  const result = await response.json();
+  console.log('Успешное присоединение:', result);
+  return result;
+}
