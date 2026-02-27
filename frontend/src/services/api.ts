@@ -1,5 +1,5 @@
-﻿// API сервис для локальной разработки
-const API_BASE_URL = "http://localhost:3000";
+﻿// API сервис
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export interface Room {
   id: string;
@@ -31,7 +31,8 @@ export interface CreateRoomResponse {
 
 export async function createRoom(params: CreateRoomParams): Promise<CreateRoomResponse> {
   console.log('Отправка запроса на создание комнаты:', params);
-  
+  console.log('API_BASE_URL:', API_BASE_URL);
+
   const response = await fetch(`${API_BASE_URL}/api/rooms`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -57,6 +58,7 @@ export async function createRoom(params: CreateRoomParams): Promise<CreateRoomRe
 }
 
 export async function getRoom(roomId: string): Promise<any> {
+  console.log('API_BASE_URL:', API_BASE_URL);
   const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
@@ -74,18 +76,19 @@ export async function getRoom(roomId: string): Promise<any> {
 
 export async function joinRoom(roomId: string, playerId: string, playerName: string): Promise<any> {
   console.log('Присоединение к комнате:', { roomId, playerId, playerName });
-  
+  console.log('API_BASE_URL:', API_BASE_URL);
+
   const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/join`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ 
-      userId: playerId,  // Бэкенд ожидает userId, а не playerId
-      userName: playerName  // Бэкенд ожидает userName, а не playerName
+    body: JSON.stringify({
+      userId: playerId,
+      userName: playerName
     }),
   });
 
   console.log('Статус ответа join:', response.status);
-  
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Неизвестная ошибка' }));
     console.error('Ошибка от сервера при присоединении:', errorData);
