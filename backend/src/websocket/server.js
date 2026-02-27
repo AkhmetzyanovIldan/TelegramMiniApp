@@ -59,7 +59,7 @@ const setupWebSocket = (server) => {
         try {
           const roomData = await redis.get(`room:${roomId}`);
           if (roomData) {
-            const room = JSON.parse(roomData);
+            const room = roomData;
             io.to(roomId).emit('room_update', room);
           }
         } catch (error) {
@@ -91,7 +91,7 @@ const setupWebSocket = (server) => {
         try {
           const roomData = await redis.get(`room:${roomId}`);
           if (roomData) {
-            const room = JSON.parse(roomData);
+            const room = roomData;
             const playerIndex = room.players.findIndex(p => p.id === userId);
 
             if (playerIndex !== -1) {
@@ -117,7 +117,7 @@ const setupWebSocket = (server) => {
         try {
           const roomData = await redis.get(`room:${roomId}`);
           if (roomData) {
-            const room = JSON.parse(roomData);
+            const room = roomData;
 
             // Проверяем что пользователь - хост
             const player = room.players.find(p => p.id === userId);
@@ -175,3 +175,4 @@ const setupWebSocket = (server) => {
 };
 
 module.exports = { setupWebSocket };
+
