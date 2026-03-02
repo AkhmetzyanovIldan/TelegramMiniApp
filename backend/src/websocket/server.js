@@ -96,7 +96,7 @@ const setupWebSocket = (server) => {
 
             if (playerIndex !== -1) {
               room.players[playerIndex].isReady = isReady;
-              await redis.setex(`room:${roomId}`, 1800, JSON.stringify(room));
+              await redis.set(`room:${roomId}`, room, 1800);
 
               io.to(roomId).emit('room_update', room);
               io.to(roomId).emit('player_ready', { userId, userName: room.players[playerIndex].name, isReady });
@@ -126,7 +126,7 @@ const setupWebSocket = (server) => {
               const allReady = room.players.every(p => p.isReady);
               if (allReady && room.players.length >= 4) {
                 room.status = 'starting';
-                await redis.setex(`room:${roomId}`, 1800, JSON.stringify(room));
+                await redis.set(`room:${roomId}`, room, 1800);
 
                 io.to(roomId).emit('game_starting', { roomId, countdown: 5 });
                 logger.info(`Игра начинается в комнате ${roomId}`);
@@ -175,4 +175,5 @@ const setupWebSocket = (server) => {
 };
 
 module.exports = { setupWebSocket };
+
 
