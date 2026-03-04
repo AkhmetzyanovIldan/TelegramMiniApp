@@ -1,96 +1,58 @@
-﻿import React, { useState, useEffect } from 'react';
-
-interface TelegramUser {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
-  is_premium?: boolean;
-}
+﻿import { useEffect, useState } from 'react';
 
 declare global {
   interface Window {
-    Telegram?: {
-      WebApp: {
-        initDataUnsafe?: {
-          user?: TelegramUser;
-        };
-        expand: () => void;
-        ready: () => void;
-      };
-    };
+    Telegram?: any;
   }
 }
 
-export const useTelegram = () => {
+interface TelegramUser {
+  id: number;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+}
+
+export function useTelegram() {
   const [user, setUser] = useState<TelegramUser | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const initTelegram = () => {
-      try {
-        console.log('Инициализация Telegram Web App...');
-        
-        // Проверяем наличие Telegram Web App
-        if (window.Telegram?.WebApp) {
-          const { WebApp } = window.Telegram;
-          console.log('Telegram WebApp найден:', WebApp);
-
-          // Инициализируем приложение
-          WebApp.expand();
-          WebApp.ready();
-
-          const telegramUser = WebApp.initDataUnsafe?.user;
-          console.log('Данные пользователя от Telegram:', telegramUser);
-          
-          if (telegramUser) {
-            console.log('ID пользователя:', telegramUser.id, 'Тип:', typeof telegramUser.id);
-            setUser(telegramUser);
-          } else {
-            // Режим разработки без Telegram
-            console.log('Telegram Web App не обнаружил пользователя, используем режим разработки');
-            const devUser = {
-              id: Math.floor(Math.random() * 10000),
-              first_name: 'Разработчик',
-              username: 'dev_user'
-            };
-            console.log('Создан тестовый пользователь:', devUser);
-            setUser(devUser);
-          }
-        } else {
-          // Режим разработки в браузере
-          console.warn('Telegram Web App не доступен. Запущен режим разработки.');
-          const devUser = {
-            id: Math.floor(Math.random() * 10000),
-            first_name: 'Тестовый',
-            username: 'test_user'
-          };
-          console.log('Создан тестовый пользователь:', devUser);
-          setUser(devUser);
-        }
-
-        setIsLoaded(true);
-      } catch (error) {
-        console.error('Ошибка инициализации Telegram:', error);
-        // Fallback для разработки
-        const fallbackUser = {
-          id: Math.floor(Math.random() * 10000),
-          first_name: 'Ошибка',
-          username: 'error_user'
-        };
-        console.log('Создан пользователь при ошибке:', fallbackUser);
-        setUser(fallbackUser);
-        setIsLoaded(true);
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      
+      const initUser = tg.initDataUnsafe?.user;
+      if (initUser) {
+        setUser(initUser);
       }
-    };
 
-    initTelegram();
-
-    return () => {
-      // Очистка при размонтировании
-    };
+      // Устанавливаем CSS-переменные темы
+      const theme = tg.themeParams;
+      if (theme) {
+        const root = document.documentElement;
+        root.style.setProperty('--tg-bg-color', theme.bg_color || '#ffffff');
+        root.style.setProperty('--tg-text-color', theme.text_color || '#000000');
+        root.style.setProperty('--tg-hint-color', theme.hint_color || '#999999');
+        root.style.setProperty('--tg-link-color', theme.link_color || '#2481cc');
+        root.style.setProperty('--tg-button-color', theme.button_color || '#40a7e3');
+        root.style.setProperty('--tg-button-text-color', theme.button_text_color || '#ffffff');
+        root.style.setProperty('--tg-secondary-bg-color', theme.secondary_bg_color || '#f0f0f0');
+      }
+      
+      setIsLoaded(true);
+    } else {
+      console.log('Telegram Web App не обнаружен, используем режим разработки');
+      setUser({
+        id: Math.floor(Math.random() * 10000),
+        first_name: 'Разработчик',
+        username: 'dev_user'
+      });
+      setIsLoaded(true);
+    }
   }, []);
 
   return { user, isLoaded };
-};
+}

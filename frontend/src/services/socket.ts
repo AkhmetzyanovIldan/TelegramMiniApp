@@ -1,10 +1,10 @@
 ﻿import { io, Socket } from 'socket.io-client';
 
-const SOCKET_URL = 'http://localhost:3000';
+const SOCKET_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
 
 class SocketService {
   private socket: Socket | null = null;
-  private listeners: Map<string, (...args: any[]) => void> = new Map();
+  private listeners: Map<string, Set<(...args: any[]) => void>> = new Map();
 
   connect(roomId: string, userId: string, username: string): void {
     if (this.socket?.connected) {
@@ -12,7 +12,7 @@ class SocketService {
       return;
     }
 
-    console.log('Подключение к Socket.IO серверу...', { roomId, userId, username });
+    console.log('Подключение к Socket.IO серверу...', { roomId, userId, username, SOCKET_URL });
 
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -23,11 +23,7 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('✅ Socket.IO подключен, ID:', this.socket?.id);
-      
-      // Аутентификация
       this.socket?.emit('authenticate', { userId });
-      
-      // Присоединение к комнате
       this.socket?.emit('join_room', { roomId, userId });
     });
 
@@ -39,51 +35,18 @@ class SocketService {
       console.log('📴 Socket.IO отключен:', reason);
     });
 
-    // Регистрируем обработчики событий
-    this.setupEventListeners();
-  }
-
-  private setupEventListeners(): void {
-    if (!this.socket) return;
-
-    // Обновление комнаты
-    this.socket.on('room_update', (roomData) => {
-      console.log('📊 Обновление комнаты:', roomData);
-      this.emitToListener('room_update', roomData);
-    });
-
-    // Новое сообщение в чате
-    this.socket.on('chat_message', (messageData) => {
-      console.log('💬 Новое сообщение:', messageData);
-      this.emitToListener('chat_message', messageData);
-    });
-
-    // Готовность игрока
-    this.socket.on('player_ready', (data) => {
-      console.log('🎮 Готовность игрока обновлена:', data);
-      this.emitToListener('player_ready', data);
-    });
-
-    // Игра начинается
-    this.socket.on('game_starting', (data) => {
-      console.log('⏳ Игра начинается:', data);
-      this.emitToListener('game_starting', data);
-    });
-
-    // Обновление таймера
-    this.socket.on('countdown_update', (data) => {
-      console.log('⏱️ Таймер:', data.countdown);
-      this.emitToListener('countdown_update', data);
-    });
-
-    // Игра началась
-    this.socket.on('game_started', (data) => {
-      console.log('🚀 Игра началась!', data);
-      this.emitToListener('game_started', data);
+    // Единый обработчик для всех событий
+    const events = ['room_update', 'chat_message', 'player_ready', 'game_starting', 'countdown_update', 'game_started'];
+    events.forEach(event => {
+      this.socket?.on(event, (data: any) => {
+        const callbacks = this.listeners.get(event);
+        if (callbacks) {
+          callbacks.forEach(cb => cb(data));
+        }
+      });
     });
   }
 
-  // Методы для отправки событий
   sendChatMessage(roomId: string, userId: string, userName: string, message: string): void {
     this.socket?.emit('chat_message', { roomId, userId, userName, message });
   }
@@ -96,15 +59,22 @@ class SocketService {
     this.socket?.emit('start_game', { roomId, userId });
   }
 
-  // Подписка на события
   on(event: string, callback: (...args: any[]) => void): void {
-    this.listeners.set(event, callback);
-    this.socket?.on(event, callback);
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event)!.add(callback);
   }
 
-  off(event: string): void {
-    this.listeners.delete(event);
-    this.socket?.off(event);
+  off(event: string, callback?: (...args: any[]) => void): void {
+    if (callback) {
+      const callbacks = this.listeners.get(event);
+      if (callbacks) {
+        callbacks.delete(callback);
+      }
+    } else {
+      this.listeners.delete(event);
+    }
   }
 
   disconnect(): void {
@@ -113,13 +83,6 @@ class SocketService {
       this.socket = null;
       this.listeners.clear();
       console.log('👋 Socket.IO отключен');
-    }
-  }
-
-  private emitToListener(event: string, data: any): void {
-    const listener = this.listeners.get(event);
-    if (listener) {
-      listener(data);
     }
   }
 

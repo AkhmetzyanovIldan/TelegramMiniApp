@@ -15,6 +15,12 @@ class GameRoom {
         this.messages = data.messages || [];
         this.createdAt = data.createdAt || new Date().toISOString();
         this.status = data.status || 'waiting';
+        // Новые поля для игровой логики
+        this.phase = data.phase || null; // 'night', 'day_speech', 'day_discussion', 'voting'
+        this.phaseEndTime = data.phaseEndTime || null;
+        this.nightActions = data.nightActions || { heal: null, investigate: null, donCheck: null, kills: [] };
+        this.daySpeechOrder = data.daySpeechOrder || [];
+        this.voting = data.voting || { candidates: [], votes: {}, excluded: null };
     }
 
     static async create(data) {
@@ -63,7 +69,13 @@ class GameRoom {
                 settings: this.settings,
                 messages: this.messages,
                 createdAt: this.createdAt,
-                status: this.status
+                status: this.status,
+                // новые поля
+                phase: this.phase,
+                phaseEndTime: this.phaseEndTime,
+                nightActions: this.nightActions,
+                daySpeechOrder: this.daySpeechOrder,
+                voting: this.voting
             });
 
             await redisClient.set(roomKey, serializedData);
@@ -176,6 +188,42 @@ class GameRoom {
             console.error(`❌ Ошибка удаления игрока ${userId}:`, error);
             throw error;
         }
+    }
+
+    assignRoles() {
+        const players = this.players.filter(p => p.isAlive !== false);
+        const count = players.length;
+        let roles = [];
+
+        if (count < 4) return false;
+        if (count === 4) {
+            roles = ['mafia', 'sheriff', 'doctor', 'civilian'];
+        } else if (count === 5) {
+            roles = ['mafia', 'sheriff', 'doctor', 'civilian', 'civilian'];
+        } else if (count === 6) {
+            roles = ['mafia', 'sheriff', 'doctor', 'civilian', 'civilian', 'civilian'];
+        } else if (count === 7) {
+            roles = ['mafia', 'sheriff', 'doctor', 'civilian', 'civilian', 'civilian', 'civilian'];
+        } else if (count >= 8) {
+            const mafiaCount = Math.floor(count / 3);
+            const donCount = 1;
+            const mafiaWithoutDon = mafiaCount - donCount;
+            roles = Array(mafiaWithoutDon).fill('mafia').concat(['don', 'sheriff', 'doctor']);
+            const civilians = count - roles.length;
+            roles = roles.concat(Array(civilians).fill('civilian'));
+        }
+
+        // Перемешиваем роли
+        for (let i = roles.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [roles[i], roles[j]] = [roles[j], roles[i]];
+        }
+
+        players.forEach((player, index) => {
+            player.role = roles[index];
+        });
+
+        return true;
     }
 }
 
