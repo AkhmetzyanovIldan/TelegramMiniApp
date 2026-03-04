@@ -1,6 +1,7 @@
 ﻿const { Server } = require('socket.io');
 const redis = require('../database/redis-client');
 const logger = require('../utils/logger');
+const GameRoom = require('../models/GameRoom');
 
 let io;
 
@@ -132,19 +133,15 @@ const setupWebSocket = (server) => {
                 logger.info(`Игра начинается в комнате ${roomId}`);
 
                 // Таймер обратного отсчета
-                let countdown = 5;
-                const interval = setInterval(() => {
+                let countdown = 3;
+                const interval = setInterval(async () => {
                   io.to(roomId).emit('countdown_update', { countdown });
                   countdown--;
 
                   if (countdown < 0) {
                     clearInterval(interval);
-                    // Здесь будет логика распределения ролей
-                    io.to(roomId).emit('game_started', {
-                      roomId,
-                      gameType: room.gameType,
-                      players: room.players
-                    });
+                    // Запускаем игровую логику
+                    await startGameLogic(roomId);
                   }
                 }, 1000);
               }
@@ -153,6 +150,50 @@ const setupWebSocket = (server) => {
         } catch (error) {
           logger.error('Ошибка при старте игры:', error);
         }
+      }
+    });
+
+        // Ночное действие (врач, комиссар, дон, мафия)
+    socket.on('night_action', async (data) => {
+      const { roomId, userId, actionType, targetId } = data;
+      if (!roomId || !userId || !actionType) return;
+
+      try {
+        const room = await GameRoom.getById(roomId);
+        if (!room) return;
+
+        if (room.phase !== 'night') return;
+
+        const player = room.players.find(p => p.id === userId);
+        if (!player || !player.isAlive) return;
+
+        // Проверка соответствия роли и действия
+        if (actionType === 'heal' && player.role !== 'doctor') return;
+        if (actionType === 'investigate' && player.role !== 'sheriff') return;
+        if (actionType === 'don_check' && player.role !== 'don') return;
+        if (actionType === 'kill' && !['mafia', 'don'].includes(player.role)) return;
+
+        // Сохраняем действие
+        if (actionType === 'heal') {
+          room.nightActions.heal = targetId;
+        } else if (actionType === 'investigate') {
+          room.nightActions.investigate = targetId;
+          const target = room.players.find(p => p.id === targetId);
+          const isMafia = target && ['mafia', 'don'].includes(target.role);
+          socket.emit('investigation_result', { targetId, isMafia });
+        } else if (actionType === 'don_check') {
+          room.nightActions.donCheck = targetId;
+          const target = room.players.find(p => p.id === targetId);
+          const isSheriff = target && target.role === 'sheriff';
+          socket.emit('don_check_result', { targetId, isSheriff });
+        } else if (actionType === 'kill') {
+          room.nightActions.kills.push(targetId);
+        }
+
+        await room.save();
+        socket.emit('night_action_ack', { actionType, targetId });
+      } catch (error) {
+        logger.error('Ошибка в night_action:', error);
       }
     });
 
@@ -169,6 +210,81 @@ const setupWebSocket = (server) => {
       logger.error(`WebSocket ошибка: ${error}`);
     });
   });
+
+    async function startGameLogic(roomId) {
+    try {
+      const room = await GameRoom.getById(roomId);
+      if (!room) return;
+
+      const success = room.assignRoles();
+      if (!success) {
+        io.to(roomId).emit('game_error', { message: 'Недостаточно игроков для распределения ролей' });
+        return;
+      }
+
+      await room.save();
+
+      // Отправляем каждому игроку его роль
+      room.players.forEach(player => {
+        io.to(player.id).emit('role_assigned', { role: player.role });
+      });
+
+      // Начинаем ночную фазу
+      room.phase = 'night';
+      room.phaseEndTime = Date.now() + 15000; // 15 секунд на ночь
+      room.nightActions = { heal: null, investigate: null, donCheck: null, kills: [] };
+      await room.save();
+
+      io.to(roomId).emit('night_start', { phaseEndTime: room.phaseEndTime });
+
+      // Таймер окончания ночи
+      setTimeout(async () => {
+        await processNight(roomId);
+      }, 15000);
+    } catch (error) {
+      logger.error('Ошибка в startGameLogic:', error);
+    }
+  }
+
+  async function processNight(roomId) {
+    try {
+      const room = await GameRoom.getById(roomId);
+      if (!room) return;
+
+      const actions = room.nightActions;
+      let victim = null;
+
+      // Определяем жертву мафии
+      if (actions.kills.length > 0) {
+        victim = actions.kills[0]; // упрощённо: первый голос
+      }
+
+      // Проверяем лечение
+      if (actions.heal && actions.heal === victim) {
+        victim = null; // спасли
+      }
+
+      // Убиваем жертву
+      if (victim) {
+        const player = room.players.find(p => p.id === victim);
+        if (player) player.isAlive = false;
+      }
+
+      // Переходим к дневной фазе
+      room.phase = 'day_speech';
+      room.phaseEndTime = Date.now() + 15000; // 15 сек на последнее слово
+      await room.save();
+
+      io.to(roomId).emit('day_start', {
+        victim: victim ? room.players.find(p => p.id === victim)?.name : null,
+        phaseEndTime: room.phaseEndTime
+      });
+
+      // Здесь будет следующий этап (речи, голосование)
+    } catch (error) {
+      logger.error('Ошибка в processNight:', error);
+    }
+  }
 
   logger.info('WebSocket сервер запущен');
   return io;
