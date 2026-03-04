@@ -190,6 +190,24 @@ class GameRoom {
         }
     }
 
+    static async getAllActive() {
+        try {
+        const redis = require('../database/redis-client');
+        const keys = await redis.keys('room:*');
+        const rooms = [];
+        for (const key of keys) {
+            const roomData = await redis.get(key);
+            if (roomData) {
+            rooms.push(new GameRoom(roomData));
+            }
+        }
+        return rooms;
+        } catch (error) {
+        console.error('Ошибка при получении всех комнат:', error);
+        return [];
+        }
+    }
+
     assignRoles() {
         const players = this.players.filter(p => p.isAlive !== false);
         const count = players.length;
