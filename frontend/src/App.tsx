@@ -7,10 +7,10 @@ import LoadingScreen from './components/LoadingScreen';
 import { useTelegram } from './hooks/useTelegram';
 
 const App: React.FC = () => {
-  const { user, isLoaded } = useTelegram();
+  const { user, isReady } = useTelegram();
 
-  if (!isLoaded) {
-    return <LoadingScreen />;
+  if (!isReady) {
+    return <LoadingScreen />; // или просто <div>Загрузка...</div>, если компонента нет
   }
 
   return (
